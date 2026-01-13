@@ -1,0 +1,7 @@
+{
+  "name": "Aura Planner",
+  "description": "An AI-powered, privacy-first mobile productivity app with Apple-inspired design and gamified real-world stats.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
