@@ -44,12 +44,29 @@ export interface UserStats {
   xp: number;
   level: number;
   streak: number;
+  focusMinutes: number;
+  sessionsCompleted: number;
 }
 
 export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
   timestamp: number;
+}
+
+export interface ChatSession {
+  id: string;
+  timestamp: number;
+  preview: string;
+  messages: ChatMessage[];
+}
+
+export interface ChronoState {
+  isActive: boolean;
+  type: 'focus' | 'break' | 'long-break';
+  startTime: number | null;
+  endTime: number | null;
+  remainingAtLastPause: number | null;
 }
 
 export interface AppState {
@@ -72,11 +89,16 @@ export interface AppState {
   rituals: {
     pomodoroLength: number;
     breakLength: number;
+    longBreakLength: number;
     hapticIntensity: 'off' | 'low' | 'high';
     soundEnabled: boolean;
     soundVolume: number;
+    autoStartBreaks: boolean;
+    autoStartFocus: boolean;
   };
   chats: ChatMessage[];
+  archivedChats: ChatSession[];
+  chrono: ChronoState;
   sortPreference: 'difficulty' | 'time' | 'category';
   recentlyDeletedTask?: Task | null;
 }

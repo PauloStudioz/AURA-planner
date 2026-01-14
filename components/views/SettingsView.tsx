@@ -40,7 +40,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   return (
-    <div className="animate-view-enter space-y-10 pb-48 pt-4">
+    <div className="animate-view-enter space-y-10 pb-64 pt-4">
       <section>
         <h3 className="protocol-label mb-6 ml-4">Environment</h3>
         <div className="card-ui rounded-[2.5rem] p-2 flex bg-black/5 dark:bg-white/5 border-none">
@@ -99,41 +99,50 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </section>
 
       <section>
-        <h3 className="protocol-label mb-6 ml-4">Feedback Engine</h3>
-        <div className="card-ui rounded-[3rem] p-9 space-y-10">
-          <div className="flex items-center justify-between">
-            <span className="text-lg font-black text-main">Acoustics</span>
-            <button onClick={() => onUpdateRituals({...rituals, soundEnabled: !rituals.soundEnabled})}
-              className={`w-14 h-8 rounded-full transition-all relative ${rituals.soundEnabled ? 'bg-accent' : 'bg-black/10 dark:bg-white/10'}`}>
-              <div className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all shadow-md ${rituals.soundEnabled ? 'left-7' : 'left-1'}`} />
-            </button>
-          </div>
-          <div className="relative pt-2">
-            <input type="range" min="0" max="1" step="0.01" value={rituals.soundVolume} onChange={e => onUpdateRituals({...rituals, soundVolume: parseFloat(e.target.value)})}
-              className="w-full h-1.5 appearance-none bg-black/5 dark:bg-white/10 rounded-full accent-accent" />
-          </div>
-        </div>
-      </section>
-
-      <section>
         <div className="flex items-center justify-between mb-6 ml-4 mr-4">
             <h3 className="protocol-label !mb-0">Neural Enclave</h3>
             <a 
               href="https://aistudio.google.com/app/apikey" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="text-[9px] font-black text-blue-500 uppercase tracking-widest bg-blue-500/10 px-3 py-1.5 rounded-full flex items-center space-x-1"
+              className="group flex items-center space-x-2 bg-accent/10 px-4 py-2 rounded-2xl transition-all active:scale-95"
             >
-              <span>Get API Key</span>
-              <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+              <span className="text-[9px] font-black text-accent uppercase tracking-widest">Get API Key</span>
+              <svg className="w-3 h-3 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
             </a>
         </div>
         <div className="card-ui rounded-[3rem] p-9">
-          <input type="password" value={apiKey || ''} onChange={e => onSetApiKey(e.target.value)} placeholder="sk-..." 
-            className="w-full input-ui p-6 font-mono text-xs outline-none focus:border-accent" />
-          <p className="mt-6 text-[9px] opacity-30 font-bold text-center leading-relaxed">
-            Your key is stored locally on this device.<br/>Aura never transmits your secrets.
+          <div className="relative group mb-6">
+            <input 
+              type="password" 
+              value={apiKey || ''} 
+              onChange={e => onSetApiKey(e.target.value)} 
+              placeholder="Paste Gemini Key Here" 
+              className="w-full input-ui p-6 font-mono text-xs outline-none border border-transparent focus:border-accent transition-all" 
+            />
+          </div>
+          <p className="text-[9px] opacity-30 font-bold text-center leading-relaxed">
+            Stored locally. Neural synthesis active only when key is present.
           </p>
+        </div>
+      </section>
+
+      <section>
+        <h3 className="protocol-label mb-6 ml-4">Audio Synthesis</h3>
+        <div className="card-ui rounded-[2.5rem] p-8 space-y-6">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase tracking-widest opacity-40">System Volume</span>
+            <span className="text-xs font-black text-accent">{Math.round(rituals.soundVolume * 100)}%</span>
+          </div>
+          <input 
+            type="range" 
+            min="0" 
+            max="1" 
+            step="0.01" 
+            value={rituals.soundVolume} 
+            onChange={e => onUpdateRituals({...rituals, soundVolume: parseFloat(e.target.value)})}
+            className="w-full accent-accent"
+          />
         </div>
       </section>
     </div>

@@ -52,7 +52,7 @@ export const RoutineView: React.FC<RoutineViewProps> = ({
   };
 
   return (
-    <div className="animate-view-enter pb-48 pt-2">
+    <div className="animate-view-enter pb-64 pt-4">
       <div className="mb-10 text-center px-4">
         <h2 className="text-xl font-black text-main uppercase tracking-widest">Blueprint Protocols</h2>
         <p className="text-[10px] font-bold opacity-30 uppercase tracking-[0.3em] mt-2">Active templates spawn daily</p>
@@ -129,12 +129,6 @@ export const RoutineView: React.FC<RoutineViewProps> = ({
             + Create New Protocol
           </button>
         )}
-      </div>
-
-      <div className="mt-12 p-8 text-center opacity-20">
-         <p className="text-[9px] font-bold uppercase tracking-[0.2em] leading-relaxed">
-           Protocols are blueprint templates.<br/>Toggling one "Active" manifests it in your Flow for today.
-         </p>
       </div>
     </div>
   );

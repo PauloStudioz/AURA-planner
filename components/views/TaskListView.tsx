@@ -2,7 +2,7 @@
 import React, { useMemo } from 'react';
 import TaskItem from '../TaskItem';
 import StatsWidget from '../StatsWidget';
-import { Task, AppState } from '../../types';
+import { Task } from '../../types';
 
 interface TaskListViewProps {
   tasks: Task[];
@@ -43,7 +43,7 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
   }, [tasks, sortPreference]);
 
   return (
-    <div className="animate-view-enter pb-32">
+    <div className="animate-view-enter pb-64 pt-4">
       <StatsWidget stats={stats} tasks={tasks} history={history} />
       
       <div className="flex items-center justify-between mb-8 px-1">
@@ -82,8 +82,6 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
               onToggle={onToggle} 
               onDelete={onDelete} 
               onToggleSubtask={onToggleSubtask} 
-              onUpdateTask={() => {}} 
-              onUpdateSubtask={() => {}} 
               onLongPress={(task) => onLongPress?.(task)} 
             />
           ))

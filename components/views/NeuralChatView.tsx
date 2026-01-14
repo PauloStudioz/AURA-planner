@@ -14,8 +14,8 @@ interface NeuralChatViewProps {
 }
 
 export const NeuralChatView: React.FC<NeuralChatViewProps> = ({ chats, onShowPicker, onShowHistory, onClear, model, chatEndRef, loading, volume = 0.5 }) => (
-  <div className="h-full flex flex-col space-y-4 animate-view-enter">
-    <div className="flex items-center space-x-2 p-1.5 bg-black/5 dark:bg-white/5 rounded-[2rem] border border-black/5 dark:border-white/5">
+  <div className="animate-view-enter pb-64 pt-4">
+    <div className="flex items-center space-x-2 p-1.5 bg-black/5 dark:bg-white/5 rounded-[2rem] border border-black/5 dark:border-white/5 mb-8">
       <button 
         onClick={() => { soundEngine.playClick(volume); onShowHistory(); }} 
         className="p-3 bg-white/50 dark:bg-zinc-800/50 rounded-full text-blue-500 shadow-sm active:scale-90 transition-transform"
@@ -40,9 +40,9 @@ export const NeuralChatView: React.FC<NeuralChatViewProps> = ({ chats, onShowPic
       </button>
     </div>
 
-    <div className="flex-1 space-y-4 overflow-y-auto scrollbar-hide px-1 pb-32 pt-2">
+    <div className="space-y-4">
       {chats.length === 0 ? (
-        <div className="h-full flex flex-col items-center justify-center opacity-10 space-y-4">
+        <div className="py-32 flex flex-col items-center justify-center opacity-10 space-y-4 text-center">
            <svg className="w-12 h-12 text-main" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
            <p className="text-[10px] font-black uppercase tracking-[0.5em] text-main">Neural Link Standby</p>
         </div>
@@ -70,7 +70,7 @@ export const NeuralChatView: React.FC<NeuralChatViewProps> = ({ chats, onShowPic
           </div>
         </div>
       )}
-      <div ref={chatEndRef} />
+      <div ref={chatEndRef} className="h-4" />
     </div>
   </div>
 );

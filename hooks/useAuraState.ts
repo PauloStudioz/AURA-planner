@@ -1,9 +1,12 @@
 
 import { useState, useLayoutEffect, useTransition, useCallback, useEffect } from 'react';
-import { AppState, AILevel, Task, UserStats, RoutineBlueprint } from '../types';
+import { AppState, AILevel, Task, UserStats, RoutineBlueprint, ChronoState, ChatSession } from '../types';
 import { soundEngine } from '../services/soundService';
 
-const INITIAL_STATS: UserStats = { focus: 10, discipline: 10, consistency: 10, creativity: 10, xp: 0, level: 1, streak: 0 };
+const INITIAL_STATS: UserStats = { 
+  focus: 10, discipline: 10, consistency: 10, creativity: 10, 
+  xp: 0, level: 1, streak: 0, focusMinutes: 0, sessionsCompleted: 0 
+};
 
 const ACCENT_MAP: Record<string, string> = {
   blue: '#007AFF',
@@ -23,74 +26,120 @@ const hexToRgb = (hex: string) => {
 };
 
 export const useAuraState = () => {
-  const [isPending, startTransition] = useTransition();
   const [state, setState] = useState<AppState>(() => {
     const saved = localStorage.getItem('aura_state');
     const defaultState: AppState = {
       tasks: [], routines: [], lastRoutineReset: '', stats: INITIAL_STATS, history: {}, aiMode: AILevel.NORMAL, apiKey: null,
       energyLevel: 'morning', onboarded: true, profile: { name: 'Seeker', motto: 'Flow follows focus.' },
-      theme: 'glass', accentColor: 'blue', glassStyle: 'fusion', chats: [], sortPreference: 'time',
-      rituals: { pomodoroLength: 25, breakLength: 5, hapticIntensity: 'high', soundEnabled: true, soundVolume: 0.5 },
+      theme: 'glass', accentColor: 'blue', glassStyle: 'fusion', chats: [], archivedChats: [], sortPreference: 'time',
+      rituals: { pomodoroLength: 25, breakLength: 5, longBreakLength: 15, hapticIntensity: 'high', soundEnabled: true, soundVolume: 0.5, autoStartBreaks: false, autoStartFocus: false },
+      chrono: { isActive: false, type: 'focus', startTime: null, endTime: null, remainingAtLastPause: null },
       recentlyDeletedTask: null
     };
     if (!saved) return defaultState;
     try {
       const parsed = JSON.parse(saved);
-      return { ...defaultState, ...parsed, recentlyDeletedTask: null };
+      return { 
+        ...defaultState, 
+        ...parsed, 
+        rituals: { ...defaultState.rituals, ...parsed.rituals },
+        recentlyDeletedTask: null,
+        archivedChats: parsed.archivedChats || []
+      };
     } catch (e) {
       return defaultState;
     }
   });
 
-  useEffect(() => {
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    
+  const startChrono = useCallback((type: 'focus' | 'break' | 'long-break') => {
     setState(p => {
-      let changed = false;
-      let updatedTasks = [...p.tasks];
-      let lastReset = p.lastRoutineReset;
-
-      if (lastReset !== todayStr) {
-        changed = true;
-        updatedTasks = updatedTasks.filter(t => !t.isRoutineInstance && (t.date || todayStr) >= todayStr);
-        const activeRoutines = p.routines.filter(r => r.isActive);
-        activeRoutines.forEach(r => {
-          updatedTasks.push({
-            id: `routine-${r.id}-${todayStr}`,
-            title: r.title,
-            duration: r.duration,
-            startTime: r.startTime,
-            date: todayStr,
-            completed: false,
-            category: r.category,
-            isBoss: false,
-            subTasks: [],
-            difficulty: r.difficulty,
-            isRoutineInstance: true
-          });
-        });
-        lastReset = todayStr;
-      }
-
-      const finalizedTasks = updatedTasks.filter(t => {
-        const taskDate = t.date || todayStr;
-        const isPast = taskDate < todayStr;
-        if (isPast && !t.completed) {
-            changed = true;
-            return false; 
-        }
-        return true; 
-      });
-
-      if (!changed && finalizedTasks.length === p.tasks.length) return p;
-
+      if (p.rituals.soundEnabled) soundEngine.playPing(p.rituals.soundVolume * 0.3);
+      const length = type === 'focus' ? p.rituals.pomodoroLength : (type === 'break' ? p.rituals.breakLength : p.rituals.longBreakLength);
+      const durationMs = length * 60 * 1000;
+      const startTime = Date.now();
       return {
         ...p,
-        tasks: finalizedTasks,
-        lastRoutineReset: lastReset,
+        chrono: { isActive: true, type, startTime, endTime: startTime + durationMs, remainingAtLastPause: null }
       };
     });
+  }, []);
+
+  const archiveCurrentChat = useCallback(() => {
+    setState(p => {
+      if (p.chats.length === 0) return p;
+      const session: ChatSession = {
+        id: Math.random().toString(36).substr(2, 9),
+        timestamp: Date.now(),
+        preview: p.chats[0].text.substring(0, 40) + '...',
+        messages: [...p.chats]
+      };
+      return {
+        ...p,
+        chats: [],
+        archivedChats: [session, ...p.archivedChats].slice(0, 50) // Keep last 50
+      };
+    });
+  }, []);
+
+  const restoreSession = useCallback((session: ChatSession) => {
+    setState(p => ({
+      ...p,
+      chats: session.messages
+    }));
+  }, []);
+
+  const deleteSession = useCallback((id: string) => {
+    setState(p => ({
+      ...p,
+      archivedChats: p.archivedChats.filter(s => s.id !== id)
+    }));
+  }, []);
+
+  useEffect(() => {
+    const reconcileBackgroundTime = () => {
+      setState(p => {
+        if (!p.chrono.isActive || !p.chrono.endTime) return p;
+        
+        const now = Date.now();
+        if (now >= p.chrono.endTime) {
+          const finishedType = p.chrono.type;
+          const addedMinutes = finishedType === 'focus' ? p.rituals.pomodoroLength : 0;
+          if (p.rituals.soundEnabled) soundEngine.playPing(p.rituals.soundVolume);
+          
+          let nextState = {
+            ...p,
+            stats: {
+              ...p.stats,
+              focusMinutes: p.stats.focusMinutes + addedMinutes,
+              sessionsCompleted: p.stats.sessionsCompleted + (finishedType === 'focus' ? 1 : 0),
+              xp: p.stats.xp + (finishedType === 'focus' ? 150 : 0)
+            },
+            chrono: { ...p.chrono, isActive: false, startTime: null, endTime: null }
+          };
+
+          if (finishedType === 'focus' && p.rituals.autoStartBreaks) {
+             const length = p.rituals.breakLength;
+             const start = Date.now();
+             nextState.chrono = { isActive: true, type: 'break', startTime: start, endTime: start + length * 60 * 1000, remainingAtLastPause: null };
+          } else if ((finishedType === 'break' || finishedType === 'long-break') && p.rituals.autoStartFocus) {
+             const length = p.rituals.pomodoroLength;
+             const start = Date.now();
+             nextState.chrono = { isActive: true, type: 'focus', startTime: start, endTime: start + length * 60 * 1000, remainingAtLastPause: null };
+          }
+
+          return nextState;
+        }
+        return p;
+      });
+    };
+
+    reconcileBackgroundTime();
+    const interval = setInterval(reconcileBackgroundTime, 1000);
+    window.addEventListener('focus', reconcileBackgroundTime);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', reconcileBackgroundTime);
+    };
   }, []);
 
   useLayoutEffect(() => {
@@ -105,42 +154,88 @@ export const useAuraState = () => {
     root.style.setProperty('--accent-glow', `rgba(${r}, ${g}, ${b}, 0.5)`);
     
     let gradient = 'none';
+    let baseBg = '#FBFBFD';
+    
+    // Glass Style Variables
+    let glassBlur = '32px';
+    let glassSaturate = '2.5';
+    let cardBg = 'rgba(255, 255, 255, 0.7)';
+
     if (state.theme === 'glass') {
       switch (state.glassStyle) {
         case 'fusion': 
-          gradient = `radial-gradient(at 0% 0%, ${hex}e0 0px, transparent 60%), 
-                      radial-gradient(at 100% 0%, #AF52DEaa 0px, transparent 65%), 
-                      radial-gradient(at 100% 100%, ${hex}d0 0px, transparent 60%), 
-                      radial-gradient(at 0% 100%, #34C759aa 0px, transparent 65%), 
-                      radial-gradient(at 50% 50%, rgba(255,255,255,0.98) 0px, transparent 85%), 
-                      #E8EBF2`; 
+          baseBg = '#E8EBF2';
+          gradient = `
+            radial-gradient(at 0% 0%, ${hex}44 0px, transparent 50%),
+            radial-gradient(at 100% 0%, #AF52DE44 0px, transparent 50%),
+            radial-gradient(at 100% 100%, #34C75944 0px, transparent 50%),
+            radial-gradient(at 0% 100%, #FF950044 0px, transparent 50%),
+            radial-gradient(at 50% 50%, #FFFFFF 0px, transparent 80%)
+          `; 
+          glassBlur = '40px';
+          glassSaturate = '2.5';
+          cardBg = 'rgba(255, 255, 255, 0.35)';
           break;
+          
         case 'prism': 
-          gradient = `linear-gradient(160deg, ${hex}bb 0%, #ffffff 25%, #ffffff 75%, ${hex}a0 100%), 
-                      radial-gradient(at 100% 0%, #AF52DEcc 0px, transparent 55%),
-                      radial-gradient(at 0% 100%, #34C759cc 0px, transparent 55%)`; 
+          baseBg = '#FFFFFF';
+          gradient = `
+            linear-gradient(45deg, #FF2D5522, #AF52DE22, #007AFF22, #34C75922, #FF950022),
+            radial-gradient(circle at 20% 20%, #FF2D5544, transparent 40%),
+            radial-gradient(circle at 80% 80%, #007AFF44, transparent 40%)
+          `; 
+          glassBlur = '20px';
+          glassSaturate = '4.5';
+          cardBg = 'rgba(255, 255, 255, 0.25)';
           break;
+          
         case 'deep': 
-          gradient = `linear-gradient(135deg, ${hex}90 0%, #BCC6D5 45%, ${hex}80 100%),
-                      radial-gradient(circle at top right, ${hex}50, transparent),
-                      radial-gradient(circle at bottom left, #AF52DE50, transparent)`; 
+          baseBg = '#2C3E50';
+          gradient = `
+            radial-gradient(circle at 50% 50%, ${hex}66, #000000),
+            linear-gradient(180deg, rgba(255,255,255,0.1) 0%, transparent 100%)
+          `; 
+          glassBlur = '100px';
+          glassSaturate = '1.2';
+          cardBg = 'rgba(255, 255, 255, 0.12)';
           break;
+          
         case 'pure': 
-          gradient = `linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)`; 
+          baseBg = '#F8F9FA';
+          gradient = `
+            linear-gradient(135deg, #FFFFFF 0%, #E9ECEF 100%),
+            radial-gradient(at 0% 0%, ${hex}11 0px, transparent 50%)
+          `; 
+          glassBlur = '15px';
+          glassSaturate = '1.1';
+          cardBg = 'rgba(255, 255, 255, 0.82)';
           break;
       }
     } else if (state.theme === 'midnight') {
-      gradient = `radial-gradient(circle at 50% -25%, ${hex}a0 0%, #000000 85%)`;
-    } else {
-      gradient = 'none';
+      baseBg = '#000000';
+      gradient = `radial-gradient(circle at 50% -20%, ${hex}44 0%, #000000 80%)`;
+      glassBlur = '40px';
+      glassSaturate = '2.8';
+      cardBg = 'rgba(28, 28, 30, 0.65)';
+    } else if (state.theme === 'light') {
+       baseBg = '#FBFBFD';
+       gradient = 'none';
+       glassBlur = '20px';
+       glassSaturate = '1.5';
+       cardBg = 'rgba(255, 255, 255, 0.8)';
     }
+
+    root.style.setProperty('--glass-blur', glassBlur);
+    root.style.setProperty('--glass-saturate', glassSaturate);
+    root.style.setProperty('--card-bg', cardBg);
     
+    bgLayer.style.backgroundColor = baseBg;
     bgLayer.style.backgroundImage = gradient;
-    bgLayer.style.opacity = (state.theme === 'glass' || state.theme === 'midnight') ? '1' : '0';
+    bgLayer.style.opacity = '1';
     
     const { recentlyDeletedTask, ...persistState } = state;
     localStorage.setItem('aura_state', JSON.stringify(persistState));
-  }, [state.theme, state.accentColor, state.glassStyle]);
+  }, [state.theme, state.accentColor, state.glassStyle, state]);
 
   const toggleTask = (id: string) => {
     setState(p => {
@@ -148,11 +243,9 @@ export const useAuraState = () => {
       if (!t) return p;
       const val = !t.completed;
       if (p.rituals.soundEnabled) val ? soundEngine.playPing(p.rituals.soundVolume) : soundEngine.playTick(p.rituals.soundVolume);
-      
       const todayKey = new Date().toISOString().split('T')[0];
       const newHistory = { ...p.history };
       newHistory[todayKey] = Math.max(0, (newHistory[todayKey] || 0) + (val ? 1 : -1));
-
       return { 
         ...p, 
         tasks: p.tasks.map(x => x.id === id ? { ...x, completed: val } : x), 
@@ -166,114 +259,13 @@ export const useAuraState = () => {
     });
   };
 
-  const updateTask = (id: string, updates: Partial<Task>) => {
-    setState(p => ({
-      ...p,
-      tasks: p.tasks.map(t => t.id === id ? { ...t, ...updates } : t)
-    }));
-  };
-
-  const deleteTask = (id: string) => {
+  const cancelChrono = () => {
     setState(p => {
-      const taskToDelete = p.tasks.find(t => t.id === id);
+      if (p.rituals.soundEnabled) soundEngine.playTick(p.rituals.soundVolume);
       return {
         ...p,
-        tasks: p.tasks.filter(t => t.id !== id),
-        recentlyDeletedTask: taskToDelete || null
+        chrono: { ...p.chrono, isActive: false, startTime: null, endTime: null }
       };
-    });
-  };
-
-  const undoDelete = () => {
-    setState(p => {
-      if (!p.recentlyDeletedTask) return p;
-      return {
-        ...p,
-        tasks: [p.recentlyDeletedTask, ...p.tasks],
-        recentlyDeletedTask: null
-      };
-    });
-  };
-
-  const addTasks = (newTasks: Task[]) => setState(p => ({ ...p, tasks: [...newTasks, ...p.tasks] }));
-
-  const addRoutine = (r: RoutineBlueprint) => {
-    setState(p => {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const updatedRoutines = [...p.routines, r];
-      let updatedTasks = [...p.tasks];
-      
-      if (r.isActive) {
-        updatedTasks.push({
-          id: `routine-${r.id}-${todayStr}`,
-          title: r.title,
-          duration: r.duration,
-          startTime: r.startTime,
-          date: todayStr,
-          completed: false,
-          category: r.category,
-          isBoss: false,
-          subTasks: [],
-          difficulty: r.difficulty,
-          isRoutineInstance: true
-        });
-      }
-      
-      return { ...p, routines: updatedRoutines, tasks: updatedTasks };
-    });
-  };
-
-  const deleteRoutine = (id: string) => {
-    setState(p => ({ 
-      ...p, 
-      routines: p.routines.filter(r => r.id !== id),
-      tasks: p.tasks.filter(t => !t.id.startsWith(`routine-${id}`))
-    }));
-  };
-
-  const toggleRoutineActive = (id: string) => {
-    setState(p => {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const routine = p.routines.find(r => r.id === id);
-      if (!routine) return p;
-      
-      const becomingActive = !routine.isActive;
-      const updatedRoutines = p.routines.map(r => r.id === id ? { ...r, isActive: becomingActive } : r);
-      
-      let updatedTasks = [...p.tasks];
-      if (becomingActive) {
-        updatedTasks.push({
-          id: `routine-${id}-${todayStr}`,
-          title: routine.title,
-          duration: routine.duration,
-          startTime: routine.startTime,
-          date: todayStr,
-          completed: false,
-          category: routine.category,
-          isBoss: false,
-          subTasks: [],
-          difficulty: routine.difficulty,
-          isRoutineInstance: true
-        });
-      } else {
-        updatedTasks = updatedTasks.filter(t => t.id !== `routine-${id}-${todayStr}`);
-      }
-      
-      return { ...p, routines: updatedRoutines, tasks: updatedTasks };
-    });
-  };
-
-  const updateRoutine = (id: string, updates: Partial<RoutineBlueprint>) => {
-    setState(p => {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const updatedRoutines = p.routines.map(r => r.id === id ? { ...r, ...updates } : r);
-      const updatedTasks = p.tasks.map(t => {
-        if (t.id === `routine-${id}-${todayStr}`) {
-          return { ...t, ...updates };
-        }
-        return t;
-      });
-      return { ...p, routines: updatedRoutines, tasks: updatedTasks };
     });
   };
 
@@ -281,15 +273,20 @@ export const useAuraState = () => {
     state, 
     setState: (u: any) => setState(p => ({ ...p, ...u })), 
     toggleTask, 
-    deleteTask, 
-    addTasks, 
+    deleteTask: (id: string) => setState(p => ({ ...p, tasks: p.tasks.filter(t => t.id !== id), recentlyDeletedTask: p.tasks.find(t => t.id === id) || null })), 
+    addTasks: (newTasks: Task[]) => setState(p => ({ ...p, tasks: [...newTasks, ...p.tasks] })), 
     updateSortPreference: (pref: any) => setState(p => ({ ...p, sortPreference: pref })), 
-    updateTask, 
-    undoDelete, 
-    addRoutine, 
-    deleteRoutine, 
-    toggleRoutineActive,
-    updateRoutine,
-    toggleSubtask: (tid: string, sid: string) => {} 
+    updateTask: (id: string, updates: Partial<Task>) => setState(p => ({ ...p, tasks: p.tasks.map(t => t.id === id ? { ...t, ...updates } : t) })), 
+    undoDelete: () => setState(p => p.recentlyDeletedTask ? { ...p, tasks: [p.recentlyDeletedTask, ...p.tasks], recentlyDeletedTask: null } : p), 
+    addRoutine: (r: RoutineBlueprint) => setState(p => ({ ...p, routines: [...p.routines, r] })), 
+    deleteRoutine: (id: string) => setState(p => ({ ...p, routines: p.routines.filter(r => r.id !== id) })), 
+    toggleRoutineActive: (id: string) => setState(p => ({ ...p, routines: p.routines.map(r => r.id === id ? { ...r, isActive: !r.isActive } : r) })),
+    updateRoutine: (id: string, u: any) => setState(p => ({ ...p, routines: p.routines.map(r => r.id === id ? { ...r, ...u } : r) })),
+    startChrono,
+    cancelChrono,
+    toggleSubtask: (tid: string, sid: string) => {},
+    archiveCurrentChat,
+    restoreSession,
+    deleteSession
   };
 };
